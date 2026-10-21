@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Courtyard house planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif&display=swap" rel="stylesheet">
+<style>{{CSS}}</style>
+</head>
+<body>
+<nav class="topnav" id="topnav" aria-label="Sections"><button type="button" data-view="planner" aria-pressed="true">Planner</button><button type="button" data-view="studio" aria-pressed="false">Studio</button><button type="button" data-view="ductile" aria-pressed="false">Ductile</button></nav>
+<div class="app">
+  <header class="hd">
+    <h1>Courtyard house planner</h1>
+    <p class="sub">Choose a size, roof and structure. The 3D model, floor plan and cost estimate update together.</p>
+  </header>
+  <div class="grid">
+    <section class="card controls" aria-label="Design options">
+      <div class="fld"><label for="area">House footprint<b id="areaV"></b></label><div class="seg" id="segSize"></div><input type="range" id="area" min="500" max="1500" step="25" style="margin-top:8px"><p class="hint" id="sizeHint"></p></div>
+      <div class="fld"><span class="lbl">Rooms</span>
+        <div class="mini"><span>Bedrooms</span><div class="seg" id="segBeds"></div></div>
+        <div class="mini"><span>Attached baths (one per bedroom, master first)</span><div class="seg" id="segAtt"></div></div>
+        <div class="mini"><span>Optional rooms</span><div class="seg two" id="segExtra"></div></div>
+        <p class="hint">Kitchen, dining, entry and one common bath and WC are always included.</p>
+      </div>
+      <div class="fld"><span class="lbl">Room, courtyard and pathway sizes</span>
+        <div class="seg two" id="segCustom"></div>
+        <p class="hint" id="customHint"></p>
+        <div id="customBox" class="custombox" style="display:none"></div>
+      </div>
+      <div class="fld"><span class="lbl">Jagali (raised front platform)</span>
+        <div class="seg two" id="segJag"></div>
+        <div id="jagBox" class="custombox" style="display:none">
+          <label class="cfld"><span>Platform height above ground (ft)</span><select id="jagH"><option value="2">2.0</option><option value="2.5">2.5</option><option value="3">3.0</option><option value="3.5">3.5</option></select></label>
+          <label class="cfld"><span>Platform depth (ft)</span><input type="number" id="jagD" min="4" max="12" step="0.5"></label>
+          <div><span class="cnote">Sides that get a raised platform</span><div class="seg wrap" id="jagSides" style="margin-top:6px"><button type="button" data-k="n">Front (north)</button><button type="button" data-k="s">Back (south)</button><button type="button" data-k="e">East side</button><button type="button" data-k="w">West side</button></div></div>
+          <div><span class="cnote">Split platform: steps run straight from the ground to the door, with a jagali on each side</span><div class="seg two" id="jagSplit" style="margin-top:6px"><button type="button" data-v="0">Single level</button><button type="button" data-v="1">Split: steps to the door</button></div></div>
+          <div id="splitBox" style="display:none;gap:8px" class="custombox">
+            <div class="seg two" id="splitSteps"><button type="button" data-v="2">2 steps to the door</button><button type="button" data-v="4">4 steps to the door</button></div>
+            <div class="seg two" id="splitWing"><button type="button" data-v="0">No steps up to the jagalis</button><button type="button" data-v="1">Add steps up to each jagali</button></div>
+          <div class="seg two" id="splitScope"><button type="button" data-v="front">Split at the front only</button><button type="button" data-v="all">Split at every exit</button></div>
+            <label class="cfld"><span>Jagali height on both sides (ft above ground)</span><select id="splitH"><option value="1">1.0</option><option value="1.5">1.5</option></select></label>
+            <p class="cnote" style="margin:0" id="splitNote"></p>
+          </div>
+          <div class="seg two" id="jagL"><button type="button">Seating ledges at the front (single level only)</button></div>
+        </div>
+        <p class="hint">A raised platform with timber pillars across the front, as in traditional Karnataka houses. It lifts the whole floor to the platform height and adds a stone edge, steps and a red oxide floor.</p>
+      </div>
+      <div class="fld"><span class="lbl">Exits</span>
+        <div class="seg wrap" id="segExit"><button type="button" data-k="s">Back exit (south)</button><button type="button" data-k="e">East side exit</button><button type="button" data-k="w">West side exit</button></div>
+        <div id="exitBox" class="custombox" style="display:none"><label for="backOff" style="margin:0">Back door shift from the front door line<b id="backOffV"></b></label><input type="range" id="backOff" min="-10" max="10" step="0.5"></div>
+        <p class="hint" id="sightHint"></p>
+      </div>
+      <div class="fld"><span class="lbl">Entrance faces</span><div class="seg" id="segFace"></div><p class="hint" id="faceHint"></p></div>
+      <div class="fld"><span class="lbl">Courtyard size</span><div class="seg" id="segCy"></div><p class="hint">Large is about 12% of the footprint, like the open courtyard in a modern courtyard plan. A bigger courtyard needs a bigger footprint, so the planner grows it for you.</p></div>
+      <div class="fld"><span class="lbl">Pathway around courtyard</span><div class="seg" id="segCorr"></div><p class="hint">An open walkway on all four sides of the courtyard, with no wall on the courtyard side. Every room opens onto it. If it does not fit, the footprint grows until it does.</p></div>
+      <div class="fld"><span class="lbl">Roof shape</span><div class="seg wrap" id="segShape"></div><p class="hint" id="shapeHint"></p></div>
+      <div class="fld"><label for="cover">Roof cover</label><select id="cover"></select></div>
+      <div class="fld"><label for="pitch">Roof pitch<b id="pitchV"></b></label><input type="range" id="pitch" min="10" max="35" step="1"></div>
+      <div class="fld"><label for="over">Overhang<b id="overV"></b></label><input type="range" id="over" min="0" max="4" step="0.5"></div>
+      <div class="fld"><label for="rise">Roof rise limit<b id="riseV"></b></label><input type="range" id="rise" min="1.5" max="8" step="0.5"><p class="hint" id="riseHint"></p></div>
+      <div class="fld"><span class="lbl">Structure</span><div class="seg wrap" id="segSys"></div><p class="hint" id="sysHint"></p></div>
+      <div class="fld"><span class="lbl">Windows</span><div class="seg wrap" id="segWinF"></div><div id="woodRow"><span class="lbl" style="margin-top:8px">Wood</span><div class="seg wrap" id="segWood"></div></div><span class="lbl" style="margin-top:8px">Main door</span><div class="seg wrap" id="segMainD"></div><p class="hint" id="winHint"></p></div>
+      <div class="fld"><span class="lbl">Finishes and fittings</span><div class="spec-grid" id="specGrid"></div><span class="lbl" style="margin-top:8px">Add-ons</span><div class="spec-add" id="specAdd"></div><p class="hint" id="specHint">Each choice changes its own line in the cost estimate. Rates are editable in the cost sheet.</p></div>
+      <div class="fld"><span class="lbl">Outer and courtyard walls</span><div class="seg" id="segWallOut"></div><span class="lbl" style="margin-top:8px">Inner walls</span><div class="seg wrap" id="segWallIn"></div><p class="hint" id="wallsHint"></p></div>
+      <div class="fld"><span class="lbl">Pillars, courtyard</span><div class="seg wrap" id="segPilC"></div></div>
+      <div class="fld"><span class="lbl">Pillars, veranda or jagali</span><div class="seg wrap" id="segPilV"></div><p class="hint">Wooden pillars stand on a stone base. Square timber has bracket capitals like a traditional veranda. Plastered pillars are brick with plaster and a painted base band.</p></div>
+      <div class="fld"><span class="lbl">Services layers</span><div class="seg wrap" id="segSvc"></div><p class="hint" id="svcHint">Show plumbing lines, electrical lines, and the septic and water tanks in the 3D model, plan, drawings and cost.</p>
+        <div id="svcBox" style="display:none;margin-top:8px;display:none;gap:8px">
+          <span class="lbl" style="margin:0">Septic tank side</span><div class="seg" id="segSept"></div>
+          <label for="users">People in the house<b id="usersV"></b></label><input type="range" id="users" min="0" max="20" step="1">
+        </div>
+      </div>
+      <div class="row2">
+        <div class="fld"><label for="finish">Finish level</label><select id="finish"><option value="0.85">Basic</option><option value="1">Standard</option><option value="1.3">Premium</option></select></div>
+        <div class="fld"><label for="region">Location</label><select id="region"><option value="0.88">Village / small town</option><option value="1">Tier-2 city</option><option value="1.2">Metro</option></select></div>
+      </div>
+    </section>
+    <section class="views">
+      <div class="card">
+        <h2>3D model</h2>
+        <div class="editbar" id="editBar">
+          <span class="lbl" style="margin:0">Layout editor</span>
+          <div class="seg wrap" id="segEdit"><button type="button" data-v="off">Off</button><button type="button" data-v="select">Select and move</button><button type="button" data-v="addwall">Add wall</button><button type="button" data-v="door">Doors and windows</button></div>
+          <div id="edAdd" class="edrow" style="display:none"><div class="seg" id="segOrient"><button type="button" data-v="auto">Auto</button><button type="button" data-v="H">Horizontal</button><button type="button" data-v="V">Vertical</button></div><label class="chk"><input type="checkbox" id="edNewDoor" checked> Door in new wall</label></div>
+          <div class="chips" id="doorPal" style="display:none"><button type="button" class="chip" data-d="door3">Door 3 ft</button><button type="button" class="chip" data-d="door4">Wide door 4 ft</button><button type="button" class="chip" data-d="arch4">Open arch 4 ft</button><button type="button" class="chip" data-d="win3">Window 3 ft</button><button type="button" class="chip" data-d="win4">Window 4 ft</button><button type="button" class="chip" data-d="vent">Ventilator 1.5 ft</button></div>
+          <div id="edTools" class="edrow" style="display:none"><div class="seg" id="segSnap"><button type="button" data-v="0.5">Snap 6 in</button><button type="button" data-v="1">Snap 1 ft</button></div><button class="b" id="bGrid" type="button" aria-pressed="false">Grid</button></div>
+          <div class="btns wrap"><button class="b" id="edUndo" type="button">Undo</button><button class="b" id="edRedo" type="button">Redo</button><button class="b" id="edReset" type="button">Reset edits</button><button class="b" id="edDxf" type="button">Export DXF</button></div>
+          <p class="hint" id="editHint" style="margin:0"></p>
+          <div id="edProps" class="edprops" style="display:none"></div>
+          <div id="edChecks" class="edchecks" style="display:none"></div>
+        </div>
+        <div id="v3d" aria-label="Interactive 3D model of the house"></div>
+        <div class="btns"><button class="b" id="bRoof">Hide roof</button><button class="b" id="bXray" aria-pressed="false">See-through walls</button><button class="b" id="bFit3" type="button">Fit view</button><button class="b" id="bSpin">Stop spin</button></div>
+        <p class="hint">Drag to rotate. Pinch or scroll to zoom. The green arrow points north.</p>
+      </div>
+      <div class="card">
+        <h2>Floor plan</h2>
+        <p class="hint" id="areaLine" style="margin:0 0 10px"></p>
+        <div class="btns wrap" id="planTools"><button class="b" id="pFit" type="button">Fit</button><button class="b" id="pIn" type="button">Zoom in</button><button class="b" id="pOut" type="button">Zoom out</button><button class="b" id="pPan" type="button" aria-pressed="false">Pan</button></div>
+        <p class="hint" id="planHint" style="margin:0 0 6px">Ctrl and scroll, or pinch, to zoom. Use Pan to drag the plan.</p>
+        <div id="plan"></div>
+        <div class="legend" id="legend"></div>
+        <p class="note" id="planNote">North is up. Layout follows Vastu: entry in the north, pooja in the north-east, kitchen in the south-east, master bedroom in the south-west, open courtyard at the centre.</p>
+      </div>
+      <div class="card">
+        <h2>Optimised room sizes</h2>
+        <div class="tw" id="sched"></div>
+        <div class="schedNote" id="schedNote"></div>
+        <div class="minrow"><span id="minLine"></span><button class="b" id="useMin" style="display:none"></button></div>
+      </div>
+      <div class="card" id="costCard">
+        <h2>Cost overview</h2>
+        <div class="total"><div><span class="lbl">Estimated cost</span><span class="big" id="tot"></span></div><div class="meta" id="meta"></div></div>
+        <div class="budget" id="budget"></div>
+        <div id="bars"></div>
+        <h3>Compare structure</h3>
+        <div class="tw" id="cmpSys"></div>
+        <h3>Compare roof shape</h3>
+        <div class="tw" id="cmpRoof"></div>
+        <h3>Compare corridor</h3>
+        <div class="tw" id="cmpCorr"></div>
+        <details>
+          <summary>Edit unit rates (₹)</summary>
+          <div class="rates" id="rates"></div>
+          <button class="b" id="rateReset">Reset rates</button>
+        </details>
+        <p class="note">Indicative estimate in Indian rupees for a single-storey house, using mid-range 2026 rates and the quantities taken from the model. Real quotes vary by district, soil, brick and steel prices. Have a structural engineer check the foundation and frame before you build.</p>
+      </div>
+      <div class="card">
+        <h2>Materials needed</h2>
+        <div id="matCard"></div>
+      </div>
+      <div class="card">
+        <h2>Compare materials and cost</h2>
+        <div id="cmpCard"></div>
+      </div>
+      <div class="card" id="diyCard">
+        <h2>Build it yourself: MS pillars and brick</h2>
+        <p class="hint">How deep to dig, how tall the concrete pedestals are, and the build order for this design with steel columns and brick walls. It always uses the MS column option, whatever you picked above.</p>
+        <div class="row2" style="margin-top:12px">
+          <div class="fld"><label for="soil">Soil on your plot</label><select id="soil"></select></div>
+          <div class="fld"><label for="sbc">Bearing capacity, kN/m²</label><input type="number" id="sbc" min="50" max="400" step="10"></div>
+        </div>
+        <div id="diyBody"></div>
+        <p class="note">This is general guidance for a single-storey house, not a design. Have the soil tested and the sizes checked by a structural engineer, and follow your local building rules. Steel work, welding and deep pits are dangerous: use proper safety gear and ask a skilled welder for the column fabrication.</p>
+      </div>
+      <div class="card" id="drawCard">
+        <h2>Drawings for approval</h2>
+        <p class="hint">Makes A3 sheets at 1:100 for the current design: floor plan, front and side elevations, roof plan (top view), foundation plan, column and beam layout, structural schedules, and the foundation and column base detail. The soil and bearing capacity come from the build-it-yourself card.</p>
+        <div class="fld" style="margin-top:12px"><label for="projName">Project name</label><input type="text" id="projName" value="Courtyard house" maxlength="40"></div>
+        <div class="btns wrap"><button class="b" id="bGen">Generate drawings</button><button class="b" id="bPrint">Print or save PDF</button><button class="b" id="bDown">Download set</button></div>
+        <p class="hint" id="drawStatus"></p>
+        <div id="sheetPrev"></div>
+        <p class="note">The structural sheets use rule-of-thumb sizes for a single-storey house, not a code design. A licensed structural engineer must check and stamp them, and your local authority decides what it accepts.</p>
+      </div>
+      <div class="card" id="aiCard">
+        <h2>Review with Claude</h2>
+        <p class="hint">Optional. Add your own Anthropic API key to get a written review of the layout, the structure, and a draft approval cover note. The key stays on this device. API use is set up and billed separately in the Anthropic Console, not through a Claude chat plan.</p>
+        <details>
+          <summary>API settings</summary>
+          <div class="row2" style="margin-top:12px">
+            <div class="fld"><label for="aiKey">API key</label><input type="password" id="aiKey" autocomplete="off" placeholder="sk-ant-..."></div>
+            <div class="fld"><label for="aiModel">Model</label><select id="aiModel"><option value="claude-sonnet-5-5">Claude Sonnet 5.5</option><option value="claude-opus-5-5">Claude Opus 5.5</option><option value="claude-haiku-5-5">Claude Haiku 5.5</option></select></div>
+          </div>
+          <div class="btns"><button class="b" id="aiSave">Save</button><button class="b" id="aiClear">Remove key</button></div>
+          <p class="hint" id="aiState"></p>
+        </details>
+        <div class="btns wrap" style="margin-top:14px"><button class="b" id="aiDesign">Review design</button><button class="b" id="aiStruct">Review structure</button><button class="b" id="aiNote">Draft approval note</button></div>
+        <p class="hint" id="aiStatus"></p>
+        <div id="aiOut" class="aiout"></div>
+      </div>
+    </section>
+  </div>
+</div>
+<div id="printArea"></div>
+{{THREE}}
+<script>{{LEGACY_JS}}</script>
+<div id="studioRoot" hidden></div>
+<div id="ductileRoot" hidden></div>
+<script>{{STUDIO_JS}}</script>
+</body>
+</html>
