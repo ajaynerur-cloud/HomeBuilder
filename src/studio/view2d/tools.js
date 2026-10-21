@@ -4,6 +4,7 @@ import { modelOf } from '../model/resolve.js';
 import * as GEN from '../model/generators.js';
 import { dist, pointSeg, pointInRing, unit, sub, add, mul, perp } from '../model/geometry.js';
 import { transformObjects, splitWall, deleteObjects } from '../model/transform.js';
+import { moveObjects, setWallEnd, setBeamEnd } from '../model/edit.js';
 import { parseLength, formatLength } from '../core/units.js';
 import { valueOf } from '../core/params.js';
 import { hitTest, boxSelect } from './hit.js';
@@ -38,7 +39,7 @@ export function createTools(app) {
       // grips of the current selection
       const g = this.gripAt(e);
       if (g) { this.drag = { type: 'grip', grip: g, start: e.w, orig: clone(store.p), id: Math.random() }; return; }
-      const id = hitTest(M(), P(), level(), e.raw, v.cam.scale);
+      const id = v.pickBlockAt(e.px) || hitTest(M(), P(), level(), e.raw, v.cam.scale);
       if (id) {
         if (e.shift) store.toggle(id); else if (!sel.includes(id)) store.select([id]);
         if (store.selection.includes(id)) this.drag = { type: 'move', start: e.w, orig: clone(store.p), ids: store.selection.slice(), moved: false, id: Math.random() };
@@ -90,17 +91,7 @@ export function createTools(app) {
   };
 
   function restore(p, orig) { KINDS.forEach((k) => { p[k] = clone(orig[k]); }); p.nextId = orig.nextId; }
-  function moveWalls(p, m, ids, dx, dy) {
-    const set = new Set(ids), sw = m.walls.filter((w) => set.has(w.id)), ends = [];
-    sw.forEach((w) => { ends.push(w.a, w.b); });
-    transformObjects(p, ids, { type: 'move', dx, dy }, false);
-    const near = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.02;
-    m.walls.filter((w) => !set.has(w.id) && w.level === level()).forEach((w) => {
-      const sp = p.walls.find((x) => x.id === w.id);
-      if (ends.some((e) => near(e, w.a))) { sp.ax = r3(w.a[0] + dx); sp.ay = r3(w.a[1] + dy); }
-      if (ends.some((e) => near(e, w.b))) { sp.bx = r3(w.b[0] + dx); sp.by = r3(w.b[1] + dy); }
-    });
-  }
+  function moveWalls(p, m, ids, dx, dy) { moveObjects(p, m, ids, dx, dy, level()); }
   function applyMove(orig, ids, dx, dy, key) {
     const om = resolveModel(orig);
     store.transact('Move', (p) => { restore(p, orig); moveWalls(p, om, ids, dx, dy); }, { coalesce: 'drag' + key });
@@ -111,11 +102,9 @@ export function createTools(app) {
     store.transact('Edit', (p) => {
       restore(p, d.orig);
       if (g.kind === 'wallEnd') {
-        const w = om.wallById[g.id], old = g.end === 'a' ? w.a : w.b, sw = p.walls.find((x) => x.id === g.id), q = e.w;
-        if (g.end === 'a') { sw.ax = r3(q[0]); sw.ay = r3(q[1]); } else { sw.bx = r3(q[0]); sw.by = r3(q[1]); }
-        om.walls.filter((x) => x.id !== g.id && x.level === level()).forEach((x) => { const o = p.walls.find((y) => y.id === x.id); if (dist(x.a, old) < 0.02) { o.ax = r3(q[0]); o.ay = r3(q[1]); } if (dist(x.b, old) < 0.02) { o.bx = r3(q[0]); o.by = r3(q[1]); } });
+        setWallEnd(p, om, g.id, g.end, e.w, level());
       } else if (g.kind === 'beamEnd') {
-        const b = p.beams.find((x) => x.id === g.id); if (g.end === 'a') { b.ax = r3(e.w[0]); b.ay = r3(e.w[1]); } else { b.bx = r3(e.w[0]); b.by = r3(e.w[1]); }
+        setBeamEnd(p, g.id, g.end, e.w);
       } else if (g.kind === 'opening') {
         const o = om.openings.find((x) => x.id === g.id), w = om.wallById[o.wall], r = pointSeg(e.raw, w.a, w.b), pos = Math.max(o.w / 2 + 0.25, Math.min(w.len - o.w / 2 - 0.25, Math.round(r.t * w.len * 4) / 4));
         p.openings.find((x) => x.id === g.id).pos = r3(pos);

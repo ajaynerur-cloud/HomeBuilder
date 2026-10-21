@@ -4,7 +4,7 @@ import { pointSeg, dot, dist, pointInRing, ringArea, polyMP, mpUnion } from './g
 import { footprints } from './walls.js';
 import { detectRooms } from './rooms.js';
 import { addColumn, addBeam, addFooting } from './generators.js';
-import { wallSolidsUnion } from './solids.js';
+import { wallSolidsUnion, autoSlabMP } from './solids.js';
 import { meshStats } from './geometry.js';
 
 const FT = 0.3048, SQFT = 0.09290304;
@@ -87,11 +87,24 @@ export function loadTakedown(model) {
     }
     model.roofs.filter((r) => r.level === L.id).forEach((rf) => {
       const X0 = rf.x0 - rf.over, X1 = rf.x1 + rf.over, Y0 = rf.y0 - rf.over, Y1 = rf.y1 + rf.over, k = 1 / Math.cos(rf.pitch * Math.PI / 180);
+      const self = rf.type === 'rcc' ? 25 * rf.t * FT : 0;                       // slab self weight, kN/m2 (25 kN/m3 concrete)
       for (let x = Math.floor(X0) + 0.5; x < X1; x += 1) for (let y = Math.floor(Y0) + 0.5; y < Y1; y += 1) {
         if (x < X0 || y < Y0) continue;
-        const r = nearest(x, y); r.own += SQFT * k * q(site.dlRoof, site.llRoof); r.trib += SQFT;
+        const r = nearest(x, y); r.own += SQFT * (k * q(site.dlRoof, site.llRoof) + self); r.trib += SQFT;
       }
     });
+    // the automatic RCC roof of this level: slab weight, finishes and live load share out to the nearest column
+    if (L.rccRoof) {
+      const a = autoSlabMP(model, L.id), polys = [];
+      ((a && a.mp) || []).forEach((poly) => polys.push({ ring: poly[0], holes: poly.slice(1) }));
+      if (polys.length) {
+        let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; polys.forEach((p) => p.ring.forEach((v) => { x0 = Math.min(x0, v[0]); y0 = Math.min(y0, v[1]); x1 = Math.max(x1, v[0]); y1 = Math.max(y1, v[1]); }));
+        for (let x = Math.floor(x0) + 0.5; x < x1; x += 1) for (let y = Math.floor(y0) + 0.5; y < y1; y += 1) {
+          if (!polys.some((p) => pointInRing([x, y], p.ring) && !p.holes.some((h) => pointInRing([x, y], h)))) continue;
+          const r = nearest(x, y); r.trib += SQFT; r.own += SQFT * (25 * L.roofT * FT + q(site.dlRoof, site.llRoof));
+        }
+      }
+    }
     // walls: weight shared between the columns on either end of each span
     model.walls.filter((w) => w.level === L.id).forEach((w) => {
       const on = rows.map((r) => ({ r, t: pointSeg(r.c.c, w.a, w.b) })).filter((x) => x.t.d < 0.06).sort((a, b) => a.t.t - b.t.t);

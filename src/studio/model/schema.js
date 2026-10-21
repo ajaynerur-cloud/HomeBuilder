@@ -30,7 +30,8 @@ export function defaultParams() {
 }
 
 export function newLevel(id, name, elev, extra) {
-  return { id, name, elev, height: '=storey', autoSlab: false, slabT: '=slabT', ...(extra || {}) };
+  // rccRoof: a flat RCC roof slab (with parapet) that follows the walls of this level, whatever their shape
+  return { id, name, elev, height: '=storey', autoSlab: false, slabT: '=slabT', rccRoof: false, roofT: '=slabT', parapet: 3, parT: 0.375, roofOver: 0, ...(extra || {}) };
 }
 
 export function newProject(name = 'Untitled') {
@@ -41,6 +42,7 @@ export function newProject(name = 'Untitled') {
     activeLevel: 'L0',
     walls: [], openings: [], columns: [], beams: [], footings: [], slabs: [], roofs: [], stairs: [], dims: [], texts: [], rooms: [],
     layers: LAYERS.map((l) => ({ ...l })),
+    materials: [],
     site: { sbc: 150, fck: 20, fy: 415, dlFloor: 4.5, llFloor: 2, dlRoof: 1.5, llRoof: 0.75, brick: 19, maxSpan: 12 },
     print: { scale: 100, minMm: 1.2, base: true, baseMm: 2, marginMm: 6, bedX: 220, bedY: 220, bedZ: 250, unionWalls: true, panels: false, roofSeparate: true },
   };
@@ -53,6 +55,7 @@ export function migrate(p) {
   if (!Array.isArray(out.params) || !out.params.length) out.params = d.params;
   if (!Array.isArray(out.levels) || !out.levels.length) out.levels = d.levels;
   if (!Array.isArray(out.layers) || !out.layers.length) out.layers = d.layers;
+  if (!Array.isArray(out.materials)) out.materials = [];
   LAYERS.forEach((l) => { if (!out.layers.some((x) => x.id === l.id)) out.layers.push({ ...l }); });
   out.site = { ...d.site, ...(p && p.site) };
   out.print = { ...d.print, ...(p && p.print) };

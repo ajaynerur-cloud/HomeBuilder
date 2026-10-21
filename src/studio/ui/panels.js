@@ -8,7 +8,9 @@ import { detectRooms } from '../model/rooms.js';
 import { runChecks, printChecks, ROOM_TYPES } from '../model/checks.js';
 import { generateFrame, loadTakedown, applyFootingSizes, beamChecks } from '../model/structure.js';
 import { takeoff, toCSV } from '../model/quantities.js';
-import { newLevel } from '../model/schema.js';
+import { moveLevel, addLevel, deleteLevel } from '../model/levels.js';
+import { buildPalette } from './palette.js';
+import { resolveFill } from '../model/materials.js';
 import { buildPrint } from '../io/print.js';
 import { encodeSTL, encode3MF, encodeOBJ, mergeTris } from '../io/meshio.js';
 import { createZip, utf8 } from '../io/zip.js';
@@ -31,6 +33,23 @@ export function buildPanels(app) {
   let current = 'props';
   const keep = (el) => el.contains(document.activeElement) && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
 
+
+// colour and material of one object. Walls can be painted on one face only.
+let paintFace = 'all';
+function appearance(kind, o) {
+  const m = M(), mats = P().materials || [], card = h('div', { class: 'st-card' }, h('b', { text: 'Colour and material' }));
+  const cur = (key) => { const r = resolveFill(mats, o[key]); return r ? r.hex : null; };
+  const key = () => (kind === 'walls' ? ({ all: 'fill', a: 'fillA', b: 'fillB' }[paintFace]) : 'fill');
+  if (kind === 'walls') card.appendChild(h('label', { class: 'st-row' }, h('span', { text: 'Face' }), h('select', { class: 'st-in', onchange: (e) => { paintFace = e.target.value; panelsRefresh(); } }, [['all', 'Both faces'], ['a', 'Left face (looking from start to end)'], ['b', 'Right face']].map(([v, l]) => h('option', { value: v, text: l, selected: paintFace === v })))));
+  const hex = cur(key()) || cur('fill') || '#d8cdb4';
+  const ci = h('input', { type: 'color', class: 'st-color', value: hex, title: 'Pick a colour' }); ci.addEventListener('change', () => app.paint([o.id], ci.value, kind === 'walls' ? paintFace : 'all'));
+  card.appendChild(h('label', { class: 'st-row' }, h('span', { text: 'Colour' }), ci, h('span', { class: 'st-unit', text: o[key()] ? (String(o[key()]).slice(0, 2) === 'm:' ? 'material' : o[key()]) : 'default' })));
+  if (mats.length) card.appendChild(h('label', { class: 'st-row' }, h('span', { text: 'Material' }), h('select', { class: 'st-in', onchange: (e) => { if (e.target.value) app.paint([o.id], 'm:' + e.target.value, kind === 'walls' ? paintFace : 'all'); } }, h('option', { value: '', text: 'Choose…' }), mats.map((x) => h('option', { value: x.id, text: x.name, selected: o[key()] === 'm:' + x.id })))));
+  card.appendChild(h('div', { class: 'st-row2' }, h('button', { class: 'st-btn', text: 'Default colour', onclick: () => app.paint([o.id], null, kind === 'walls' ? paintFace : 'all') }), h('button', { class: 'st-btn', text: 'More colours…', onclick: () => show('look') })));
+  void m; return card;
+}
+function panelsRefresh() { refresh(); }
+
   // ---------- properties and modify
   tabs.props = { el: h('div'), render() {
     const el = clear(this.el), ids = store.selection, m = M(); if (!ids.length) {
@@ -44,7 +63,7 @@ export function buildPanels(app) {
     } else {
       const f = store.find(ids[0]); if (f) {
         const o = f.obj, scope = m.scope, card = h('div', { class: 'st-card' }, h('b', { text: KIND_LABEL[f.kind] + ' ' + o.id }));
-        (FIELDS[f.kind] || []).forEach((fd) => {
+        (FIELDS[f.kind] || []).filter((fd) => (!fd.only || o.type === fd.only) && (!fd.not || o.type !== fd.not)).forEach((fd) => {
           const raw = o[fd.k];
           if (fd.t === 'bool') { card.appendChild(h('label', { class: 'st-row chk' }, h('input', { type: 'checkbox', checked: !!raw, onchange: (e) => store.transact('Edit', (p) => { store.find(o.id).obj[fd.k] = e.target.checked; }) }), h('span', { text: fd.l }))); return; }
           if (fd.t === 'sel') { const s = h('select', { class: 'st-in', onchange: (e) => store.transact('Edit', (p) => { store.find(o.id).obj[fd.k] = e.target.value; }) }, fd.o.map((x) => h('option', { value: x[0], selected: String(raw) === x[0] || (raw === undefined && x[0] === fd.o[0][0]), text: x[1] }))); card.appendChild(h('label', { class: 'st-row' }, h('span', { text: fd.l }), s)); return; }
@@ -59,6 +78,7 @@ export function buildPanels(app) {
         });
         if (f.kind === 'columns' && o.auto || f.kind === 'beams' && o.auto || f.kind === 'footings' && o.auto) card.appendChild(h('div', { class: 'st-small', text: 'Made by Generate frame. Editing it keeps the change until the next regenerate.' }));
         el.appendChild(card);
+        if (['walls', 'openings', 'columns', 'beams', 'footings', 'slabs', 'roofs', 'stairs'].includes(f.kind)) el.appendChild(appearance(f.kind, o));
       }
     }
     // modify
@@ -92,19 +112,34 @@ export function buildPanels(app) {
   } };
 
   // ---------- levels and layers
+  let copyFloor = true;
   tabs.levels = { el: h('div'), render() {
-    if (keep(this.el)) return; const el = clear(this.el), m = M();
+    if (keep(this.el)) return; const el = clear(this.el), m = M(), lvs = P().levels;
     el.appendChild(h('b', { text: 'Levels' }));
-    P().levels.forEach((l, i) => {
-      const ml = m.levelById[l.id], act = P().activeLevel === l.id;
+    el.appendChild(h('div', { class: 'st-small', text: 'Top floor first. ▲ and ▼ move a floor up or down the stack, and everything drawn on it goes along. Copy puts a duplicate above or below.' }));
+    const order = lvs.map((l, i) => i).sort((a, b) => m.levelById[lvs[b].id].elev - m.levelById[lvs[a].id].elev);
+    const lenField = (l, i, label, key, def) => numField(label, l[key] === undefined ? def : l[key], (v, inp) => { const n = v.trim()[0] === '=' ? v.trim() : parseLength(v); if (typeof n === 'number' && isNaN(n)) { inp.value = l[key] === undefined ? def : l[key]; return app.toast('Enter a length.'); } store.transact('Level ' + label, (p) => { p.levels[i][key] = n; }); }, { unit: formatLength(m.levelById[l.id][key] === undefined ? 0 : m.levelById[l.id][key], D()) });
+    order.forEach((i, pos) => {
+      const l = lvs[i], ml = m.levelById[l.id], act = P().activeLevel === l.id, isTop = pos === 0, isBottom = pos === order.length - 1;
       el.appendChild(h('div', { class: 'st-card' + (act ? ' act' : '') },
         h('div', { class: 'st-row2' }, h('input', { class: 'st-in', value: l.name, onchange: (e) => store.transact('Rename level', (p) => { p.levels[i].name = e.target.value || l.name; }) }), h('button', { class: 'st-btn', text: act ? 'Active' : 'Make active', disabled: act, onclick: () => app.setLevel(l.id) })),
+        h('div', { class: 'st-row2' },
+          h('button', { class: 'st-btn', text: '▲ Up', title: 'Move this floor up one place in the stack', disabled: isTop, onclick: () => store.transact('Move floor up', (p) => { moveLevel(p, l.id, 1); }) }),
+          h('button', { class: 'st-btn', text: '▼ Down', title: 'Move this floor down one place in the stack', disabled: isBottom, onclick: () => store.transact('Move floor down', (p) => { moveLevel(p, l.id, -1); }) }),
+          h('button', { class: 'st-btn', text: 'Copy above', title: 'Duplicate this floor, with its walls and openings, directly above it', onclick: () => store.transact('Copy floor above', (p) => { addLevel(p, { where: 'above', ref: l.id, copy: true }); }) }),
+          h('button', { class: 'st-btn', text: 'Copy below', onclick: () => store.transact('Copy floor below', (p) => { addLevel(p, { where: 'below', ref: l.id, copy: true }); }) })),
         numField('Floor elevation', l.elev, (v, inp) => { const n = v.trim()[0] === '=' ? v.trim() : parseLength(v); if (typeof n === 'number' && isNaN(n)) { inp.value = l.elev; return app.toast('Enter a length.'); } store.transact('Level elevation', (p) => { p.levels[i].elev = n; }); }, { unit: formatLength(ml.elev, D()) }),
         numField('Height', l.height, (v, inp) => { const n = v.trim()[0] === '=' ? v.trim() : parseLength(v); if (typeof n === 'number' && isNaN(n)) { inp.value = l.height; return app.toast('Enter a length.'); } store.transact('Level height', (p) => { p.levels[i].height = n; }); }, { unit: formatLength(ml.height, D()) }),
         h('label', { class: 'st-row chk' }, h('input', { type: 'checkbox', checked: l.autoSlab, onchange: (e) => store.transact('Floor slab', (p) => { p.levels[i].autoSlab = e.target.checked; }) }), h('span', { text: 'Floor slab under this level (from the rooms)' })),
-        P().levels.length > 1 ? h('button', { class: 'st-btn danger sm', text: 'Delete level', onclick: () => app.ask({ title: 'Delete ' + l.name + '?', message: 'Everything drawn on this level is removed. You can still undo.', ok: 'Delete' }, () => store.transact('Delete level', (p) => { p.levels.splice(i, 1); ['walls', 'columns', 'beams', 'footings', 'slabs', 'roofs', 'stairs', 'dims', 'texts', 'rooms'].forEach((k) => { p[k] = p[k].filter((o) => o.level !== l.id); }); const ids = new Set(p.walls.map((w) => w.id)); p.openings = p.openings.filter((o) => ids.has(o.wall)); if (p.activeLevel === l.id) p.activeLevel = p.levels[0].id; })) }) : null));
+        h('label', { class: 'st-row chk', title: 'A flat reinforced-concrete roof slab with a parapet that follows the outline of the walls on this level, courtyards left open.' }, h('input', { type: 'checkbox', checked: !!l.rccRoof, onchange: (e) => store.transact('RCC roof', (p) => { p.levels[i].rccRoof = e.target.checked; }) }), h('span', { text: 'RCC roof slab on top of this level' })),
+        l.rccRoof ? h('div', { class: 'st-card sub' }, lenField(l, i, 'Roof slab thickness', 'roofT', '=slabT'), lenField(l, i, 'Parapet height', 'parapet', 3), lenField(l, i, 'Parapet thickness', 'parT', 0.375), lenField(l, i, 'Overhang beyond walls', 'roofOver', 0)) : null,
+        lvs.length > 1 ? h('button', { class: 'st-btn danger sm', text: 'Delete level', onclick: () => app.ask({ title: 'Delete ' + l.name + '?', message: 'Everything drawn on this level is removed. You can still undo.', ok: 'Delete' }, () => store.transact('Delete level', (p) => { deleteLevel(p, l.id); })) }) : null));
     });
-    el.appendChild(h('button', { class: 'st-btn', text: 'Add level above', onclick: () => store.transact('Add level', (p) => { const last = M().levels[M().levels.length - 1]; let n = p.levels.length; let id = 'L' + n; while (p.levels.some((x) => x.id === id)) id = 'L' + (++n); p.levels.push(newLevel(id, n === 1 ? 'First floor' : 'Level ' + n, Math.round(last.top * 1000) / 1000, { autoSlab: true })); p.activeLevel = id; }) }));
+    el.appendChild(h('div', { class: 'st-card' },
+      h('label', { class: 'st-row chk' }, h('input', { type: 'checkbox', checked: copyFloor, onchange: (e) => { copyFloor = e.target.checked; } }), h('span', { text: 'Copy the top floor when adding one above' })),
+      h('div', { class: 'st-row2' },
+        h('button', { class: 'st-btn pri', text: 'Add level above', onclick: () => store.transact('Add level', (p) => { addLevel(p, { where: 'above', copy: copyFloor }); }) }),
+        h('button', { class: 'st-btn', text: 'Add basement below', onclick: () => store.transact('Add basement', (p) => { addLevel(p, { where: 'below' }); }) }))));
     el.appendChild(h('b', { class: 'st-gap', text: 'Layers' }));
     P().layers.forEach((l, i) => el.appendChild(h('div', { class: 'st-row2' }, h('span', { class: 'st-swatch', style: 'background:' + l.color }), h('span', { class: 'grow', text: l.name }),
       h('label', { class: 'chk' }, h('input', { type: 'checkbox', checked: l.visible, onchange: (e) => store.transact('Layer', (p) => { p.layers[i].visible = e.target.checked; }) }), ' Show'),
@@ -216,15 +251,19 @@ export function buildPanels(app) {
     r.warnings.forEach((w) => this.stats.appendChild(h('div', { class: 'st-note ' + w.lvl }, h('span', { class: 'tag', text: w.lvl === 'err' ? 'Error' : (w.lvl === 'warn' ? 'Warning' : 'Note') }), ' ' + w.msg)));
   } };
 
+  // colours and materials
+  tabs.look = { el: h('div'), render() { if (!this.pal) { this.pal = buildPalette(app); this.el.appendChild(this.pal.el); } else this.pal.refresh(); } };
+
   // Parameters and levels live together on one Project tab
-  tabs.project = { el: h('div'), render() { tabs.params.render(); tabs.levels.render(); } };
+  tabs.project = { el: h('div'), render() { tabs.params.render(); tabs.levels.render(); tabs.look.render(); } };
   const secP = h('details', { class: 'st-sec', open: true }, h('summary', { text: 'Parameters' }), tabs.params.el);
   const secL = h('details', { class: 'st-sec', open: true }, h('summary', { text: 'Levels and layers' }), tabs.levels.el);
-  tabs.project.el.appendChild(secP); tabs.project.el.appendChild(secL);
+  const secM = h('details', { class: 'st-sec' }, h('summary', { text: 'Colours and materials' }), tabs.look.el);
+  tabs.project.el.appendChild(secP); tabs.project.el.appendChild(secL); tabs.project.el.appendChild(secM);
   const visible = [['props', 'Properties'], ['project', 'Project'], ['sched', 'Schedules'], ['checks', 'Checks'], ['eng', 'Structure'], ['print', 'Print']];
   visible.forEach(([k, l]) => { const b = h('button', { role: 'tab', text: l, onclick: () => show(k) }); tabs[k].btn = b; tabsEl.appendChild(b); body.appendChild(tabs[k].el); tabs[k].el.hidden = k !== current; });
   function show(k) {
-    if (k === 'params') { secP.open = true; k = 'project'; } else if (k === 'levels') { secL.open = true; k = 'project'; }
+    if (k === 'params') { secP.open = true; k = 'project'; } else if (k === 'levels') { secL.open = true; k = 'project'; } else if (k === 'look') { secM.open = true; k = 'project'; }
     current = k; visible.forEach(([n]) => { tabs[n].el.hidden = n !== k; tabs[n].btn.setAttribute('aria-selected', String(n === k)); tabs[n].btn.classList.toggle('on', n === k); }); tabs[k].render();
   }
   let bt = null;

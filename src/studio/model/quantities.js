@@ -1,6 +1,6 @@
 // Material take-off from the model. Quantities are indicative; rates and wastage are the estimator's job.
-import { wallSolidsUnion, ringOfColumn } from './solids.js';
-import { meshStats, ringArea } from './geometry.js';
+import { wallSolidsUnion, ringOfColumn, autoRoofMP, parapetMP } from './solids.js';
+import { meshStats, ringArea, mpArea, open as openRing } from './geometry.js';
 import { roomsNoCourt } from './structure.js';
 
 const FT = 0.3048, F3 = FT * FT * FT, F2 = FT * FT;
@@ -30,20 +30,34 @@ export function takeoff(model) {
   const doors = model.openings.filter((o) => o.kind === 'door' || o.kind === 'arch'), wins = model.openings.filter((o) => o.kind === 'window' || o.kind === 'vent');
   let floor = 0; model.levels.forEach((l) => { roomsNoCourt(model, l.id).forEach((r) => { floor += r.net * F2; }); });
   let roofA = 0; model.roofs.forEach((r) => { roofA += ((r.x1 - r.x0 + 2 * r.over) * (r.y1 - r.y0 + 2 * r.over) * F2) / Math.cos(r.pitch * Math.PI / 180); });
+  // RCC roofs: the slab (rectangle roofs and the automatic roof of a level) and the parapet that stands on it
+  let rccA = 0, vRcc = 0, vPar = 0;
+  model.roofs.filter((r) => r.type === 'rcc').forEach((r) => {
+    const w = r.x1 - r.x0 + 2 * r.over, d = r.y1 - r.y0 + 2 * r.over; rccA += w * d * F2; vRcc += w * d * r.t * F3;
+    vPar += Math.max(0, 2 * (w + d) - 4 * r.parT) * r.parT * r.parapet * F3;
+  });
+  model.levels.filter((l) => l.rccRoof).forEach((l) => {
+    const a = autoRoofMP(model, l.id); if (!a || !a.mp.length) return;
+    const area = mpArea(a.mp); rccA += area * F2; vRcc += area * l.roofT * F3; roofA += area * F2;
+    const par = parapetMP(a.mp, l.parT); if (par.length) vPar += mpArea(par) * l.parapet * F3;
+  });
   add('Earthwork', 'Excavation for footings', 'm³', exc);
   add('Earthwork', 'PCC 1:4:8 under footings (100 mm)', 'm³', pcc);
   add('Concrete', 'Footings and pedestals', 'm³', vFoot + vPed);
   add('Concrete', 'Columns', 'm³', vCol);
   add('Concrete', 'Beams', 'm³', vBeam, 'total length ' + (Math.round(beamLen * 10) / 10) + ' m');
   add('Concrete', 'Slabs', 'm³', vSlab, 'area ' + (Math.round(aSlab * 10) / 10) + ' m²');
-  const conc = vFoot + vPed + vCol + vBeam + vSlab;
+  if (vRcc > 0) add('Concrete', 'RCC roof slabs', 'm³', vRcc, 'area ' + (Math.round(rccA * 10) / 10) + ' m²');
+  const conc = vFoot + vPed + vCol + vBeam + vSlab + vRcc;
   add('Concrete', 'Total concrete', 'm³', conc);
-  add('Steel', 'Reinforcement (estimate)', 'kg', (vFoot + vPed) * STEEL.footing + vCol * STEEL.column + vBeam * STEEL.beam + vSlab * STEEL.slab, 'typical kg per m³ by member');
+  add('Steel', 'Reinforcement (estimate)', 'kg', (vFoot + vPed) * STEEL.footing + vCol * STEEL.column + vBeam * STEEL.beam + (vSlab + vRcc) * STEEL.slab, 'typical kg per m³ by member');
   add('Masonry', 'Brickwork net of openings', 'm³', vBrick);
+  if (vPar > 0) add('Masonry', 'Roof parapet', 'm³', vPar, 'on the RCC roof edge');
   add('Masonry', 'Wall length', 'm', wallLen);
   add('Finishes', 'Plaster, both faces net of openings', 'm²', plaster);
   add('Finishes', 'Floor area (clear room area)', 'm²', floor);
   add('Finishes', 'Roof area (sloped)', 'm²', roofA);
+  if (rccA > 0) add('Finishes', 'Terrace waterproofing and finish (RCC roofs)', 'm²', rccA);
   add('Openings', 'Doors and arches', 'nos', doors.length, 'area ' + (Math.round(doors.reduce((s, o) => s + o.w * o.h, 0) * F2 * 100) / 100) + ' m²');
   add('Openings', 'Windows and ventilators', 'nos', wins.length, 'area ' + (Math.round(wins.reduce((s, o) => s + o.w * o.h, 0) * F2 * 100) / 100) + ' m²');
   return rows;

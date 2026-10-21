@@ -1,6 +1,6 @@
 // The plan canvas: camera, pointer input, snapping, tools and drawing.
 import { modelOf } from '../model/resolve.js';
-import { drawPlan, makeCamera, toScreen, toWorld } from './render2d.js';
+import { drawPlan, makeCamera, toScreen, toWorld, pickBlock, TILT_MIN } from './render2d.js';
 import { snapPoint, gridStepFor, SNAP_NAMES } from './snap.js';
 import { createTools, TOOL_KEYS } from './tools.js';
 import { formatLength } from '../core/units.js';
@@ -48,16 +48,19 @@ export class View2D {
     c.addEventListener('contextmenu', (e) => e.preventDefault());
     c.addEventListener('pointerdown', (ev) => {
       c.focus(); if (c.setPointerCapture) { try { c.setPointerCapture(ev.pointerId); } catch (e) { /* synthetic */ } }
-      if (ev.button === 1 || ev.button === 2 || this.spaceDown) { this.pan = { x: ev.clientX, y: ev.clientY, cx: this.cam.x, cy: this.cam.y }; c.style.cursor = 'grabbing'; return; }
+      if (ev.button === 0 && ev.altKey) { this.orbit = { x: ev.clientX, y: ev.clientY, rot: this.cam.rot || 0, tilt: this.cam.tilt === undefined ? 90 : this.cam.tilt }; c.style.cursor = 'move'; return; }
+      if (ev.button === 1 || ev.button === 2 || this.spaceDown) { const r = c.getBoundingClientRect(); this.pan = { cam: { ...this.cam }, s: [ev.clientX - r.left, ev.clientY - r.top] }; c.style.cursor = 'grabbing'; return; }
       if (ev.button !== 0) return; const e = this.evt(ev); this.snap = e.snap; this.tool.down && this.tool.down(e); this.invalidate();
     });
     c.addEventListener('pointermove', (ev) => {
-      if (this.pan) { this.cam.x = this.pan.cx - (ev.clientX - this.pan.x) / this.cam.scale; this.cam.y = this.pan.cy + (ev.clientY - this.pan.y) / this.cam.scale; this.invalidate(); return; }
+      if (this.orbit) { const o = this.orbit; this.setView({ rot: o.rot + (ev.clientX - o.x) * 0.4, tilt: o.tilt - (ev.clientY - o.y) * 0.3 }, ev.shiftKey); return; }
+      if (this.pan) { const r = c.getBoundingClientRect(), p0 = this.pan, a = toWorld(p0.cam, this.w, this.h, p0.s), b = toWorld(p0.cam, this.w, this.h, [ev.clientX - r.left, ev.clientY - r.top]); this.cam.x = p0.cam.x + a[0] - b[0]; this.cam.y = p0.cam.y + a[1] - b[1]; this.invalidate(); return; }
       const e = this.evt(ev); this.snap = e.snap; this.cursor = e;
       this.app.setCoords(e.w, e.snap);
       this.tool.move && this.tool.move(e); this.positionDyn(e); this.invalidate();
     });
     c.addEventListener('pointerup', (ev) => {
+      if (this.orbit) { this.orbit = null; c.style.cursor = this.tool.cursor || 'default'; return; }
       if (this.pan) { this.pan = null; c.style.cursor = this.tool.cursor || 'default'; return; }
       if (ev.button !== 0) return; const e = this.evt(ev); this.tool.up && this.tool.up(e); this.invalidate();
     });
@@ -85,6 +88,8 @@ export class View2D {
     if ((ev.ctrlKey || ev.metaKey) && (k === 'y' || k === 'Y')) { this.store.redo(); ev.preventDefault(); return; }
     if (k === 'F3') { st.snap.grid = !st.snap.grid; this.app.syncSnap(); ev.preventDefault(); return; }
     if (k === 'F8') { st.snap.ortho = !st.snap.ortho; this.app.syncSnap(); ev.preventDefault(); return; }
+    if (k === '[' || k === ']') { this.setView({ rot: (this.cam.rot || 0) + (k === ']' ? 15 : -15) }, true); ev.preventDefault(); return; }
+    if (k === '\\') { this.setView({ rot: 0, tilt: 90 }); ev.preventDefault(); return; }
     if (k === 'Home' || k === 'z' || k === 'Z') { this.zoomExtents(); ev.preventDefault(); return; }
     if (k === 'g' || k === 'G') { st.showGrid = !st.showGrid; this.invalidate(); return; }
     if ((k === 'Delete' || k === 'Backspace') && this.toolId !== 'select') { this.tools.select.key(k, ev); ev.preventDefault(); return; }
@@ -95,6 +100,21 @@ export class View2D {
     this.dynEl.hidden = false; this.dynEl.textContent = this.typed + '  ⏎';
   }
   positionDyn(e) { if (!this.dynEl.hidden) { this.dynEl.style.left = e.px[0] + 18 + 'px'; this.dynEl.style.top = e.px[1] + 18 + 'px'; } }
+  // Turn and tilt the plan. rot in degrees (anticlockwise on screen), tilt 25..90 (90 = straight plan).
+  // snap: round the rotation to 15 degrees. Angles near a plan view snap to it.
+  setView(v, snap) {
+    const c = this.cam;
+    if (v.rot !== undefined) { let r = ((v.rot % 360) + 540) % 360 - 180; if (snap) r = Math.round(r / 15) * 15; else if (Math.abs(r % 90) < 2.5) r = Math.round(r / 90) * 90; c.rot = Math.round(r * 10) / 10; }
+    if (v.tilt !== undefined) { let t = Math.max(TILT_MIN, Math.min(90, v.tilt)); if (t > 87) t = 90; c.tilt = Math.round(t * 10) / 10; }
+    this.invalidate(); if (this.app.syncView) this.app.syncView();
+  }
+  // rotate so the first selected wall runs left to right
+  alignToSelection() {
+    const m = modelOf(this.store), w = m.wallById[this.store.selection.find((id) => m.wallById[id])];
+    if (!w) { this.app.toast('Select a wall first.'); return false; }
+    this.setView({ rot: -Math.atan2(w.d[1], w.d[0]) * 180 / Math.PI }); return true;
+  }
+  pickBlockAt(px) { return pickBlock({ w: this.w, h: this.h, cam: this.cam, model: modelOf(this.store), project: this.store.p, level: this.store.p.activeLevel, C: this.colors(), selection: [] }, px); }
   bounds(ids) {
     const m = modelOf(this.store), lvl = this.store.p.activeLevel; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; const add = (p) => { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); };
     const want = (id) => !ids || ids.includes(id);
@@ -106,9 +126,9 @@ export class View2D {
     return x0 > x1 ? null : [x0, y0, x1, y1];
   }
   zoomExtents(ids) {
-    const b = this.bounds(ids); if (!b) { this.cam = makeCamera(); this.invalidate(); return; }
+    const b = this.bounds(ids), keep = { rot: this.cam.rot || 0, tilt: this.cam.tilt === undefined ? 90 : this.cam.tilt }; if (!b) { this.cam = { ...makeCamera(), ...keep }; this.invalidate(); return; }
     const pw = Math.max(b[2] - b[0], 4) * 1.15, ph = Math.max(b[3] - b[1], 4) * 1.15;
-    this.cam = { x: (b[0] + b[2]) / 2, y: (b[1] + b[3]) / 2, scale: Math.max(0.5, Math.min(120, Math.min(this.w / pw, this.h / ph))) }; this.invalidate();
+    this.cam = { ...keep, x: (b[0] + b[2]) / 2, y: (b[1] + b[3]) / 2, scale: Math.max(0.5, Math.min(120, Math.min(this.w / pw, this.h / ph) * (keep.tilt < 88 ? 0.7 : 1))) }; this.invalidate();
   }
   draw() {
     if (!this.g) return;

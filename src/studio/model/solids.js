@@ -1,9 +1,10 @@
 // Solid geometry for the 3D view and for printing. Everything is triangles in studio coordinates (x east, y north, z up).
-import { addBox, addPrism, addTri, extrudeBands, extrudeMP, mpUnion, mpDiff, polyMP, orientedRect, rot, ringArea, open as openRing, meshStats, unit, sub } from './geometry.js';
+import { addBox, addPrism, addTri, extrudeBands, extrudeMP, mpUnion, mpDiff, mpInter, polyMP, rectRing, orientedRect, rot, ringArea, open as openRing, meshStats, unit, sub } from './geometry.js';
+import { fillInt } from './materials.js';
 import { footprints, openingCut } from './walls.js';
 import { detectRooms } from './rooms.js';
 
-export const COLORS = { wall: 0xd8cdb4, slab: 0xb9b4a6, roof: 0xb4573a, column: 0x9aa0a6, beam: 0x8d6e63, footing: 0x7a7a7a, door: 0x6b4423, glass: 0x7fb3d5, stair: 0xc9c2b0, base: 0x555555 };
+export const COLORS = { wall: 0xd8cdb4, slab: 0xb9b4a6, roof: 0xb4573a, column: 0x9aa0a6, beam: 0x8d6e63, footing: 0x7a7a7a, rcc: 0xa9a9a3, door: 0x6b4423, glass: 0x7fb3d5, stair: 0xc9c2b0, base: 0x555555 };
 const E = 1e-6;
 
 // members: [{mp, z0, z1}], cuts: [{mp, z0, z1}]  ->  stacked bands with openings cut out
@@ -77,9 +78,33 @@ function polyhedron(out, V, F) {
     for (let i = 1; i + 1 < Q.length; i++) addTri(out, Q[0], Q[i], Q[i + 1]);
   });
 }
+
+// ---- RCC (flat reinforced concrete) roofs: a slab of any plan shape with a parapet round the edge.
+// Every edge of the outline is thickened by a rectangle, and every corner by a square. Unioning those gives an outline offset
+// (works for rectilinear plans and for courtyard holes, which shrink by the same amount).
+function boundaryBand(mp, w) {
+  const parts = [];
+  mp.forEach((poly) => poly.forEach((ring) => {
+    const r = openRing(ring), n = r.length;
+    for (let i = 0; i < n; i++) {
+      const a = r[i], b = r[(i + 1) % n], l = Math.hypot(b[0] - a[0], b[1] - a[1]); if (l < 1e-6) continue;
+      parts.push(polyMP(orientedRect(a, unit(sub(b, a)), 0, l, w))); parts.push(polyMP(rectRing(a[0], a[1], w, w)));
+    }
+  }));
+  return mpUnion(parts);
+}
+export function offsetMP(mp, d) { return d > 1e-6 && mp && mp.length ? mpUnion([mp, boundaryBand(mp, d)]) : mp; }
+export function parapetMP(mp, pt) { return mp && mp.length ? mpInter(mp, boundaryBand(mp, pt)) : []; }
+// slab from z0 up by t, parapet of height ph and thickness pt standing on the slab edge
+export function rccRoofSolid(mp, z0, t, ph, pt) {
+  const bands = [{ mp, z0, z1: z0 + t }];
+  if (ph > 0.01) { const par = parapetMP(mp, pt); if (par.length) bands.push({ mp: par, z0: z0 + t, z1: z0 + t + ph }); }
+  const out = []; extrudeBands(out, bands); return out;
+}
 export function roofSolid(r) {
   const X0 = r.x0 - r.over, X1 = r.x1 + r.over, Y0 = r.y0 - r.over, Y1 = r.y1 + r.over, z = r.zBase, et = Math.min(r.t, 0.5), tn = Math.tan(r.pitch * Math.PI / 180);
   const Lx = X1 - X0, Ly = Y1 - Y0, out = [];
+  if (r.type === 'rcc') return rccRoofSolid(polyMP([[X0, Y0], [X1, Y0], [X1, Y1], [X0, Y1]]), z, r.t, r.parapet, r.parT);
   if (r.type === 'flat' || r.pitch < 0.5) { addBox(out, X0, Y0, z, X1, Y1, z + r.t); return out; }
   const b = [[X0, Y0, z], [X1, Y0, z], [X1, Y1, z], [X0, Y1, z]], e = b.map((p) => [p[0], p[1], z + et]);
   if (r.type === 'shed') {
@@ -128,28 +153,39 @@ export function autoSlabMP(model, levelId) {
   return { mp, L };
 }
 
+// The RCC roof of a level: the plan of the level (rooms and walls, courtyards left open) plus the overhang
+export function autoRoofMP(model, levelId) {
+  const a = autoSlabMP(model, levelId); if (!a || !a.mp || !a.mp.length) return null;
+  return { mp: offsetMP(a.mp, a.L.roofOver), L: a.L };
+}
+
 // All solid parts of the model.  opts: {union:boolean (merge walls per level), panels:boolean, levels:[ids]}
 export function buildParts(model, opts = {}) {
-  const parts = [], union = !!opts.union, lvlOk = (id) => !opts.levels || opts.levels.includes(id);
+  const parts = [], union = !!opts.union, lvlOk = (id) => !opts.levels || opts.levels.includes(id), mats = model.materials || [];
+  const col = (o, def) => fillInt(mats, o && o.fill, def);
   model.levels.filter((l) => lvlOk(l.id)).forEach((L) => {
     if (union) { const t = wallSolidsUnion(model, L.id); if (t.length) parts.push({ kind: 'wall', id: 'walls-' + L.id, level: L.id, name: L.name + ' walls', color: COLORS.wall, tris: t }); }
-    else model.walls.filter((w) => w.level === L.id).forEach((w) => { const t = wallSolid(model, w); if (t.length) parts.push({ kind: 'wall', id: w.id, level: L.id, name: 'Wall ' + w.id, color: COLORS.wall, tris: t }); });
+    else model.walls.filter((w) => w.level === L.id).forEach((w) => { const t = wallSolid(model, w); if (t.length) parts.push({ kind: 'wall', id: w.id, ref: w.id, level: L.id, name: 'Wall ' + w.id, color: col(w, COLORS.wall), tris: t }); });
     if (L.autoSlab) {
       const a = autoSlabMP(model, L.id);
-      if (a && a.mp && a.mp.length) { const t = []; extrudeMP(t, a.mp, L.elev - L.slabT, L.elev); parts.push({ kind: 'slab', id: 'autoslab-' + L.id, level: L.id, name: L.name + ' floor slab', color: COLORS.slab, tris: t }); }
+      if (a && a.mp && a.mp.length) { const t = []; extrudeMP(t, a.mp, L.elev - L.slabT, L.elev); parts.push({ kind: 'slab', id: 'autoslab-' + L.id, level: L.id, name: L.name + ' floor slab', color: fillInt(mats, L.fillSlab, COLORS.slab), tris: t }); }
+    }
+    if (L.rccRoof) {
+      const a = autoRoofMP(model, L.id);
+      if (a && a.mp.length) parts.push({ kind: 'roof', id: 'autoroof-' + L.id, level: L.id, name: L.name + ' RCC roof', color: fillInt(mats, L.fillRoof, COLORS.rcc), tris: rccRoofSolid(a.mp, L.top, L.roofT, L.parapet, L.parT) });
     }
   });
-  model.slabs.filter((s) => lvlOk(s.level)).forEach((s) => parts.push({ kind: 'slab', id: s.id, level: s.level, name: 'Slab ' + s.id, color: COLORS.slab, tris: slabSolid(s) }));
-  model.roofs.filter((r) => lvlOk(r.level)).forEach((r) => parts.push({ kind: 'roof', id: r.id, level: r.level, name: 'Roof ' + r.id, color: COLORS.roof, tris: roofSolid(r) }));
-  model.columns.filter((c) => lvlOk(c.level)).forEach((c) => parts.push({ kind: 'column', id: c.id, level: c.level, name: 'Column ' + c.id, color: COLORS.column, tris: columnSolid(c) }));
-  model.beams.filter((b) => lvlOk(b.level)).forEach((b) => parts.push({ kind: 'beam', id: b.id, level: b.level, name: 'Beam ' + b.id, color: COLORS.beam, tris: beamSolid(b) }));
-  model.footings.filter((f) => lvlOk(f.level)).forEach((f) => parts.push({ kind: 'footing', id: f.id, level: f.level, name: 'Footing ' + f.id, color: COLORS.footing, tris: footingSolid(f) }));
-  model.stairs.filter((s) => lvlOk(s.level)).forEach((s) => parts.push({ kind: 'stair', id: s.id, level: s.level, name: 'Stair ' + s.id, color: COLORS.stair, tris: stairSolid(s) }));
+  model.slabs.filter((s) => lvlOk(s.level)).forEach((s) => parts.push({ kind: 'slab', id: s.id, ref: s.id, level: s.level, name: 'Slab ' + s.id, color: col(s, COLORS.slab), tris: slabSolid(s) }));
+  model.roofs.filter((r) => lvlOk(r.level)).forEach((r) => parts.push({ kind: 'roof', id: r.id, ref: r.id, level: r.level, name: (r.type === 'rcc' ? 'RCC roof ' : 'Roof ') + r.id, color: col(r, r.type === 'rcc' ? COLORS.rcc : COLORS.roof), tris: roofSolid(r) }));
+  model.columns.filter((c) => lvlOk(c.level)).forEach((c) => parts.push({ kind: 'column', id: c.id, ref: c.id, level: c.level, name: 'Column ' + c.id, color: col(c, COLORS.column), tris: columnSolid(c) }));
+  model.beams.filter((b) => lvlOk(b.level)).forEach((b) => parts.push({ kind: 'beam', id: b.id, ref: b.id, level: b.level, name: 'Beam ' + b.id, color: col(b, COLORS.beam), tris: beamSolid(b) }));
+  model.footings.filter((f) => lvlOk(f.level)).forEach((f) => parts.push({ kind: 'footing', id: f.id, ref: f.id, level: f.level, name: 'Footing ' + f.id, color: col(f, COLORS.footing), tris: footingSolid(f) }));
+  model.stairs.filter((s) => lvlOk(s.level)).forEach((s) => parts.push({ kind: 'stair', id: s.id, ref: s.id, level: s.level, name: 'Stair ' + s.id, color: col(s, COLORS.stair), tris: stairSolid(s) }));
   if (opts.panels) {
     model.openings.filter((o) => lvlOk(o.level) && (o.kind === 'door' || o.kind === 'window' || o.kind === 'vent')).forEach((o) => {
       const w = model.wallById[o.wall], t = o.kind === 'door' ? 0.12 : 0.07, ring = orientedRect(o.c, w.d, -o.w / 2 + 0.02, o.w / 2 - 0.02, t / 2), tr = [];
       addPrism(tr, ring.map((p) => [p[0] - w.d[0] * 0, p[1]]), o.z0 + 0.02, o.z1 - 0.02);
-      parts.push({ kind: 'panel', id: 'p-' + o.id, level: o.level, name: (o.kind === 'door' ? 'Door ' : 'Window ') + o.id, color: o.kind === 'door' ? COLORS.door : COLORS.glass, tris: tr });
+      parts.push({ kind: 'panel', sub: o.kind === 'door' ? 'door' : 'glass', id: 'p-' + o.id, ref: o.id, level: o.level, name: (o.kind === 'door' ? 'Door ' : 'Window ') + o.id, color: col(o, o.kind === 'door' ? COLORS.door : COLORS.glass), tris: tr });
     });
   }
   return parts;
