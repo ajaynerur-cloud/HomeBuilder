@@ -18,7 +18,7 @@ import { EDIT_MODES } from '../view3d/edit3d.js';
 import { PRESETS, clockText } from '../view3d/lighting.js';
 import { buildPalette } from './palette.js';
 import { setFill, addMaterial } from '../model/materials.js';
-import { importMaterialFile } from '../io/skm.js';
+import { importMaterials } from '../io/skm.js';
 
 // The tool rail: one icon per tool, thin dividers between families
 const RAIL = [
@@ -66,7 +66,7 @@ export function createStudio(root, deps = {}) {
   app.importFiles = async (files) => {
     const made = [];
     for (const f of files) {
-      try { const m = await importMaterialFile(f); store.transact('Import material', (p) => { made.push(addMaterial(p, m)); }); } catch (e) { app.toast(f.name + ': ' + (e && e.message ? e.message : 'could not be read.')); }
+      try { const list = await importMaterials(f); store.transact('Import material', (p) => { list.forEach((m) => made.push(addMaterial(p, m))); }); } catch (e) { app.toast(f.name + ': ' + (e && e.message ? e.message : 'could not be read.')); }
     }
     if (made.length) { state.brush = state.brush || {}; state.brush.fill = 'm:' + made[made.length - 1].id; app.toast('Imported ' + made.length + ' material' + (made.length > 1 ? 's' : '') + '. Drag it onto a wall in 3D.'); }
     return made;

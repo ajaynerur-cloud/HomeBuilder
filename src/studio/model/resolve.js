@@ -14,6 +14,12 @@ export function resolveModel(project) {
       parT: Math.max(0.1, num(l.parT, scope, 0.375, E, l.name + ' parapet thickness')), roofOver: Math.max(0, num(l.roofOver, scope, 0, E, l.name + ' roof overhang')), fillSlab: l.fillSlab, fillRoof: l.fillRoof,
     };
   });
+  // A floor stacked on an RCC roof uses that slab as its floor (no second floor slab), and a parapet only belongs on the topmost roof.
+  levels.forEach((l) => {
+    l.belowRcc = levels.some((o) => o !== l && o.rccRoof && l.elev >= o.top - 0.05 && l.elev <= o.top + o.roofT + 0.05);
+    l.slabOn = l.autoSlab && !l.belowRcc;
+    l.parapetEff = levels.some((o) => o !== l && o.elev >= l.top - 0.05) ? 0 : l.parapet;
+  });
   const lv = {}; levels.forEach((l) => { lv[l.id] = l; });
   const lvOf = (id) => lv[id] || levels[0];
   const walls = [];

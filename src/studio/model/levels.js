@@ -52,14 +52,17 @@ export function addLevel(project, opts = {}) {
   const where = opts.where === 'below' ? 'below' : 'above', m0 = resolveModel(project);
   const ref = (opts.ref && m0.levelById[opts.ref]) || (where === 'above' ? m0.levels[m0.levels.length - 1] : m0.levels[0]);
   const refRaw = project.levels.find((l) => l.id === ref.id), id = freeId(project);
-  const lv = newLevel(id, opts.name || nameFor(project, where), 0, { autoSlab: where === 'above', height: opts.copy ? refRaw.height : '=storey' });
+  const h = opts.height !== undefined && opts.height !== '' ? opts.height : (opts.copy ? refRaw.height : '=storey');
+  // a floor above an RCC roof sits on top of that slab and uses it as its floor, so it gets no floor slab of its own
+  const onRcc = where === 'above' && ref.rccRoof;
+  const lv = newLevel(id, (opts.name && String(opts.name).trim()) || nameFor(project, where), 0, { autoSlab: where === 'above' && !onRcc, height: h });
   const idx = project.levels.findIndex((l) => l.id === ref.id);
   let at;
-  if (where === 'above') { lv.elev = r3(ref.top); at = idx + 1; } else if (idx === 0) { at = 0; } else { lv.elev = r3(ref.elev); at = idx; }
+  if (where === 'above') { lv.elev = r3(ref.top + (onRcc ? ref.roofT : 0)); at = idx + 1; } else if (idx === 0) { at = 0; } else { lv.elev = r3(ref.elev); at = idx; }
   project.levels.splice(at, 0, lv);
   const m1 = resolveModel(project), nl = m1.levelById[id];
   if (where === 'below' && at === 0) lv.elev = r3(ref.elev - nl.height);
-  else project.levels.forEach((l, i) => { if (i > at) l.elev = r3(m1.levelById[l.id].elev + nl.height); });
+  else project.levels.forEach((l, i) => { if (i > at) l.elev = r3(m1.levelById[l.id].elev + nl.height + (onRcc ? ref.roofT : 0)); });
   if (opts.copy) copyLevelContents(project, ref.id, id);
   renumberLevels(project);
   project.activeLevel = id;

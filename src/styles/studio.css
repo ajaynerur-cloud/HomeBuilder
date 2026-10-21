@@ -161,3 +161,11 @@
 .st-v3d.popped{position:absolute;left:0;top:0;right:0;bottom:0;min-height:0}
 .st-pop{background:var(--card)}
 .st-btn.tog.on,.st-optsr summary.on{background:var(--acc-bg);color:var(--acc-ink)}
+.st-matgroup{border:1px solid var(--line);border-radius:8px;padding:4px 8px;background:var(--card)}
+.st-matgroup summary{cursor:pointer;font-weight:600;font-size:12px;padding:3px 0}
+.st-matrow{display:grid;grid-template-columns:28px 1fr;gap:8px;align-items:center;padding:3px 0}
+.st-matrow.on .st-matname b{color:var(--acc-ink)}
+.st-matrow .st-sw{width:28px;aspect-ratio:1}
+.st-matname{display:flex;flex-direction:column;min-width:0;cursor:pointer;font-size:12px}
+.st-matname b,.st-matname small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.st-matname small{color:var(--ink2,#667)}
+.st-row2.wrap{flex-wrap:wrap}

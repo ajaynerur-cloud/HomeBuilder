@@ -112,7 +112,7 @@ function panelsRefresh() { refresh(); }
   } };
 
   // ---------- levels and layers
-  let copyFloor = true;
+  let copyFloor = true; const newFloor = { name: '', h: '' };
   tabs.levels = { el: h('div'), render() {
     if (keep(this.el)) return; const el = clear(this.el), m = M(), lvs = P().levels;
     el.appendChild(h('b', { text: 'Levels' }));
@@ -135,11 +135,19 @@ function panelsRefresh() { refresh(); }
         l.rccRoof ? h('div', { class: 'st-card sub' }, lenField(l, i, 'Roof slab thickness', 'roofT', '=slabT'), lenField(l, i, 'Parapet height', 'parapet', 3), lenField(l, i, 'Parapet thickness', 'parT', 0.375), lenField(l, i, 'Overhang beyond walls', 'roofOver', 0)) : null,
         lvs.length > 1 ? h('button', { class: 'st-btn danger sm', text: 'Delete level', onclick: () => app.ask({ title: 'Delete ' + l.name + '?', message: 'Everything drawn on this level is removed. You can still undo.', ok: 'Delete' }, () => store.transact('Delete level', (p) => { deleteLevel(p, l.id); })) }) : null));
     });
-    el.appendChild(h('div', { class: 'st-card' },
-      h('label', { class: 'st-row chk' }, h('input', { type: 'checkbox', checked: copyFloor, onchange: (e) => { copyFloor = e.target.checked; } }), h('span', { text: 'Copy the top floor when adding one above' })),
-      h('div', { class: 'st-row2' },
-        h('button', { class: 'st-btn pri', text: 'Add level above', onclick: () => store.transact('Add level', (p) => { addLevel(p, { where: 'above', copy: copyFloor }); }) }),
-        h('button', { class: 'st-btn', text: 'Add basement below', onclick: () => store.transact('Add basement', (p) => { addLevel(p, { where: 'below' }); }) }))));
+    const nameIn = h('input', { class: 'st-in', placeholder: 'Floor name, for example Terrace or Guest floor', value: newFloor.name, oninput: (e) => { newFloor.name = e.target.value; } });
+    const hIn = h('input', { class: 'st-in sm', placeholder: 'same as storey', value: newFloor.h, title: 'Floor height. Leave empty to use the storey height.', onchange: (e) => { newFloor.h = e.target.value.trim(); } });
+    const add = (where) => {
+      const raw = newFloor.h, hv = raw === '' ? undefined : (raw[0] === '=' ? raw : parseLength(raw));
+      if (typeof hv === 'number' && isNaN(hv)) return app.toast('Enter the floor height as a length.');
+      store.transact(where === 'above' ? 'Add level' : 'Add basement', (p) => { addLevel(p, { where, copy: where === 'above' && copyFloor, name: newFloor.name, height: hv }); });
+      newFloor.name = ''; if (!(where === 'above' && copyFloor)) { app.setTool('wall'); app.toast('New floor is active. Draw its walls now.'); }
+    };
+    el.appendChild(h('div', { class: 'st-card' }, h('b', { text: 'New floor' }),
+      h('label', { class: 'st-row' }, h('span', { text: 'Name' }), nameIn), h('label', { class: 'st-row' }, h('span', { text: 'Height' }), hIn),
+      h('label', { class: 'st-row chk' }, h('input', { type: 'checkbox', checked: copyFloor, onchange: (e) => { copyFloor = e.target.checked; } }), h('span', { text: 'Copy the top floor (otherwise start empty and draw)' })),
+      h('div', { class: 'st-small', text: 'A floor added above an RCC roof sits on top of that slab, and the roof slab is its floor.' }),
+      h('div', { class: 'st-row2' }, h('button', { class: 'st-btn pri', text: 'Add level above', onclick: () => add('above') }), h('button', { class: 'st-btn', text: 'Add basement below', onclick: () => add('below') }))));
     el.appendChild(h('b', { class: 'st-gap', text: 'Layers' }));
     P().layers.forEach((l, i) => el.appendChild(h('div', { class: 'st-row2' }, h('span', { class: 'st-swatch', style: 'background:' + l.color }), h('span', { class: 'grow', text: l.name }),
       h('label', { class: 'chk' }, h('input', { type: 'checkbox', checked: l.visible, onchange: (e) => store.transact('Layer', (p) => { p.layers[i].visible = e.target.checked; }) }), ' Show'),

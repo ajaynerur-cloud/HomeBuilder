@@ -166,13 +166,13 @@ export function buildParts(model, opts = {}) {
   model.levels.filter((l) => lvlOk(l.id)).forEach((L) => {
     if (union) { const t = wallSolidsUnion(model, L.id); if (t.length) parts.push({ kind: 'wall', id: 'walls-' + L.id, level: L.id, name: L.name + ' walls', color: COLORS.wall, tris: t }); }
     else model.walls.filter((w) => w.level === L.id).forEach((w) => { const t = wallSolid(model, w); if (t.length) parts.push({ kind: 'wall', id: w.id, ref: w.id, level: L.id, name: 'Wall ' + w.id, color: col(w, COLORS.wall), tris: t }); });
-    if (L.autoSlab) {
+    if (L.slabOn) {
       const a = autoSlabMP(model, L.id);
       if (a && a.mp && a.mp.length) { const t = []; extrudeMP(t, a.mp, L.elev - L.slabT, L.elev); parts.push({ kind: 'slab', id: 'autoslab-' + L.id, level: L.id, name: L.name + ' floor slab', color: fillInt(mats, L.fillSlab, COLORS.slab), tris: t }); }
     }
     if (L.rccRoof) {
       const a = autoRoofMP(model, L.id);
-      if (a && a.mp.length) parts.push({ kind: 'roof', id: 'autoroof-' + L.id, level: L.id, name: L.name + ' RCC roof', color: fillInt(mats, L.fillRoof, COLORS.rcc), tris: rccRoofSolid(a.mp, L.top, L.roofT, L.parapet, L.parT) });
+      if (a && a.mp.length) parts.push({ kind: 'roof', id: 'autoroof-' + L.id, level: L.id, name: L.name + ' RCC roof', color: fillInt(mats, L.fillRoof, COLORS.rcc), tris: rccRoofSolid(a.mp, L.top, L.roofT, L.parapetEff, L.parT) });
     }
   });
   model.slabs.filter((s) => lvlOk(s.level)).forEach((s) => parts.push({ kind: 'slab', id: s.id, ref: s.id, level: s.level, name: 'Slab ' + s.id, color: col(s, COLORS.slab), tris: slabSolid(s) }));

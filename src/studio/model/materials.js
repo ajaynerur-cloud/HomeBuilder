@@ -26,7 +26,7 @@ export function fillInt(materials, fill, fallback) { const r = resolveFill(mater
 export function addMaterial(p, m) {
   if (!Array.isArray(p.materials)) p.materials = [];
   const id = 'k' + (p.nextId++);
-  const mat = { id, name: String(m.name || 'Material').slice(0, 60), color: isHex(m.color) ? m.color : '#c8c2b4', opacity: m.opacity > 0 && m.opacity <= 1 ? m.opacity : 1, tex: m.tex || null, tile: Array.isArray(m.tile) ? m.tile.map((v) => Math.max(0.1, +v || 4)) : [4, 4] };
+  const mat = { id, name: String(m.name || 'Material').slice(0, 60), color: isHex(m.color) ? m.color : '#c8c2b4', opacity: m.opacity > 0 && m.opacity <= 1 ? m.opacity : 1, tex: m.tex || null, file: m.file ? String(m.file).slice(0, 120) : '', group: m.group ? String(m.group).slice(0, 80) : '', tile: Array.isArray(m.tile) ? m.tile.map((v) => Math.max(0.1, +v || 4)) : [4, 4] };
   p.materials.push(mat); return mat;
 }
 export function removeMaterial(p, id) {

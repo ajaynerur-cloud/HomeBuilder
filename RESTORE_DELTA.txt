@@ -1,0 +1,7 @@
+// Save as RESTORE_DELTA.mjs and run from the folder where you unzipped the delta:  node RESTORE_DELTA.mjs
+// It gives every file listed in delta-map.txt its real name and path (in a folder called restored/).
+// Then copy the contents of restored/ over your HomeBuilder-main project folder.
+import fs from 'node:fs'; import path from 'node:path';
+const map = JSON.parse(fs.readFileSync('delta-map.txt', 'utf8')).files; let n = 0;
+for (const [from, to] of Object.entries(map)) { if (!fs.existsSync(from)) continue; const dst = path.join('restored', to); fs.mkdirSync(path.dirname(dst), { recursive: true }); fs.copyFileSync(from, dst); n++; }
+console.log('Wrote ' + n + ' files into restored/. Copy them over your project.');

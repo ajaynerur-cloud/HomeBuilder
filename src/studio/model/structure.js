@@ -74,10 +74,10 @@ export function loadTakedown(model) {
     const nearest = (x, y) => { let best = null, bd = 1e9; rows.forEach((r) => { const d = Math.hypot(r.c.c[0] - x, r.c.c[1] - y); if (d < bd) { bd = d; best = r; } }); return best; };
     // floor and roof areas
     const q = (dl, ll) => (dl + ll);
-    const hasSlab = L.autoSlab || model.slabs.some((s) => s.level === L.id);
+    const hasSlab = L.slabOn || model.slabs.some((s) => s.level === L.id);
     if (hasSlab) {
       const polys = [];
-      if (L.autoSlab) roomsNoCourt(model, L.id).forEach((r) => polys.push({ ring: r.ring, holes: r.holes }));
+      if (L.slabOn) roomsNoCourt(model, L.id).forEach((r) => polys.push({ ring: r.ring, holes: r.holes }));
       model.slabs.filter((s) => s.level === L.id).forEach((s) => polys.push({ ring: s.ring, holes: s.holes || [] }));
       let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; polys.forEach((p) => p.ring.forEach((v) => { x0 = Math.min(x0, v[0]); y0 = Math.min(y0, v[1]); x1 = Math.max(x1, v[0]); y1 = Math.max(y1, v[1]); }));
       for (let x = Math.floor(x0) + 0.5; x < x1; x += 1) for (let y = Math.floor(y0) + 0.5; y < y1; y += 1) {

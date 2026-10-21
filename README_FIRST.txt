@@ -1,6 +1,4 @@
-All files in this zip end in .txt.
-1. Unzip.
-2. Copy RESTORE_NAMES.txt to RESTORE_NAMES.mjs and run:  node RESTORE_NAMES.mjs
-   (or upload everything to GitHub and rename build.yml.txt per rename-map.txt)
-3. npm install, then npm run build, then npm test.
-rename-map.txt lists the real name of every file.
+Delta update for HomeBuilder-main. All files end in .txt.
+1. Unzip.  2. Copy RESTORE_DELTA.txt to RESTORE_DELTA.mjs and run: node RESTORE_DELTA.mjs
+3. Copy restored/ over your project folder (same paths).  4. npm install, npm run build, npm test.
+delta-map.txt (JSON) lists new and modified files with their real paths.

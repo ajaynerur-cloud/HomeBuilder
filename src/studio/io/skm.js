@@ -81,4 +81,28 @@ export async function importMaterialFile(file) {
   if (m.tex) { const t = await prepareTexture(m.tex); url = t.url; if (t.avg && (m.source === 'image' || !m.color || m.color === '#c8c2b4')) color = t.avg; }
   return { name: m.name, color, opacity: m.opacity, tex: url, tile: m.tile || [4, 4] };
 }
-export const MATERIAL_ACCEPT = '.skm,.jpg,.jpeg,.png,.webp,.gif,.bmp';
+export const MATERIAL_ACCEPT = '.skm,.zip,.jpg,.jpeg,.png,.webp,.gif,.bmp';
+
+async function finalize(m) {
+  let url = null, color = m.color;
+  if (m.tex) { const t = await prepareTexture(m.tex); url = t.url; if (t.avg && (m.source === 'image' || !m.color || m.color === '#c8c2b4')) color = t.avg; }
+  return { name: m.name, color, opacity: m.opacity, tex: url, tile: m.tile || [4, 4] };
+}
+// A file can hold one material (.skm, image) or many (a .zip of .skm files). Each material is tagged with the file it came from and a group:
+// the folder (when a whole folder is chosen), the zip's name, or "Imported files" for loose files.
+export async function importMaterials(file) {
+  const e = ext(file.name), rel = file.webkitRelativePath || '', folder = rel.indexOf('/') > 0 ? rel.split('/')[0] : '';
+  if (e === 'zip') {
+    const bytes = new Uint8Array(await file.arrayBuffer()), list = readZip(bytes).filter((en) => ext(en.name) === 'skm' || IMG[ext(en.name)]); if (!list.length) throw new Error('No .skm or image files inside this zip.');
+    const out = [];
+    for (const en of list) {
+      try {
+        const b = en.data(), m = ext(en.name) === 'skm' ? parseSkm(b, en.name) : { name: base(en.name), color: '#c8c2b4', opacity: 1, tex: { mime: IMG[ext(en.name)], bytes: b }, tile: null, source: 'image' };
+        out.push({ ...(await finalize(m)), file: en.name.replace(/^.*[\\/]/, ''), group: base(file.name) });
+      } catch (err) { /* skip a damaged entry, keep the rest */ }
+    }
+    if (!out.length) throw new Error('None of the files inside this zip could be read.');
+    return out;
+  }
+  return [{ ...(await importMaterialFile(file)), file: file.name, group: folder || 'Imported files' }];
+}

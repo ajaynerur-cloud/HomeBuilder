@@ -18,7 +18,7 @@ export function takeoff(model) {
   model.beams.forEach((b) => { vBeam += b.w * b.depth * b.len * F3; beamLen += b.len * FT; });
   let vSlab = 0, aSlab = 0;
   model.slabs.forEach((s) => { const a = Math.abs(ringArea(s.ring)) - (s.holes || []).reduce((t, h) => t + Math.abs(ringArea(h)), 0); aSlab += a * F2; vSlab += a * s.t * F3; });
-  model.levels.filter((l) => l.autoSlab).forEach((l) => { const a = roomsNoCourt(model, l.id).reduce((t, r) => t + r.gross, 0); aSlab += a * F2; vSlab += a * l.slabT * F3; });
+  model.levels.filter((l) => l.slabOn).forEach((l) => { const a = roomsNoCourt(model, l.id).reduce((t, r) => t + r.gross, 0); aSlab += a * F2; vSlab += a * l.slabT * F3; });
   let vBrick = 0, wallLen = 0, plaster = 0;
   model.levels.forEach((l) => {
     const t = wallSolidsUnion(model, l.id); if (t.length) vBrick += meshStats(t).volume * F3;
@@ -39,7 +39,7 @@ export function takeoff(model) {
   model.levels.filter((l) => l.rccRoof).forEach((l) => {
     const a = autoRoofMP(model, l.id); if (!a || !a.mp.length) return;
     const area = mpArea(a.mp); rccA += area * F2; vRcc += area * l.roofT * F3; roofA += area * F2;
-    const par = parapetMP(a.mp, l.parT); if (par.length) vPar += mpArea(par) * l.parapet * F3;
+    const par = l.parapetEff > 0 ? parapetMP(a.mp, l.parT) : []; if (par.length) vPar += mpArea(par) * l.parapetEff * F3;
   });
   add('Earthwork', 'Excavation for footings', 'm³', exc);
   add('Earthwork', 'PCC 1:4:8 under footings (100 mm)', 'm³', pcc);

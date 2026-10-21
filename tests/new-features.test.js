@@ -131,3 +131,25 @@ test('3D lighting presets and editing modes on a stub renderer', async () => {
     v.edit.setMode('door'); v.edit.hover({ clientX: 300, clientY: 200 }); v.destroy();
   } finally { globalThis.THREE = prev; }
 });
+
+test('a floor added above an RCC roof sits on the slab; named, sized floors; parapet only on the top roof', () => {
+  const p = lShape(); p.levels[0].rccRoof = true; p.levels[0].roofT = 0.5;
+  addLevel(p, { name: 'Guest floor', height: 9 }); let m = resolveModel(p); const up = m.levels[1];
+  assert.equal(up.name, 'Guest floor'); assert.equal(up.elev, 10.5); assert.equal(up.height, 9); assert.equal(p.levels[1].autoSlab, false);
+  assert.equal(m.levels[0].parapetEff, 0);
+  p.levels[1].rccRoof = true; m = resolveModel(p); assert.equal(m.levels[1].parapetEff, 3);
+  const ids = buildParts(m, {}).map((x) => x.id); assert.ok(ids.includes('autoroof-L0') && !ids.includes('autoslab-L1'));
+  p.levels[1].autoSlab = true; assert.ok(!buildParts(resolveModel(p), {}).some((x) => x.id === 'autoslab-L1'));   // no double slab on the RCC
+  addLevel(p, { where: 'above', ref: 'L0', name: 'Mezzanine' }); assert.equal(resolveModel(p).levelById.L1.elev, 21); assert.equal(resolveModel(p).levels[1].name, 'Mezzanine'); assert.ok(resolveModel(p).levels.every((l, i, a) => !i || l.elev >= a[i - 1].top));
+});
+
+test('material import groups by zip or folder and keeps file names', async () => {
+  const { importMaterials } = await import('../src/studio/io/skm.js');
+  const skm = (n, c) => createZip([{ name: 'document.xml', data: '<mat:material colorBlue="' + c + '" colorGreen="10" colorRed="20" name="' + n + '" hasTexture="0"/>' }]);
+  const asFile = (name, bytes, rel) => ({ name, webkitRelativePath: rel || '', arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) });
+  const coll = createZip([{ name: 'tiles/Marble.skm', data: skm('Marble', 200) }, { name: 'tiles/Granite.skm', data: skm('Granite', 90) }, { name: 'readme.txt', data: 'x' }]);
+  const a = await importMaterials(asFile('Stone pack.zip', coll)); assert.deepEqual(a.map((m) => [m.name, m.file, m.group]), [['Marble', 'Marble.skm', 'Stone pack'], ['Granite', 'Granite.skm', 'Stone pack']]);
+  const b = await importMaterials(asFile('Teak.skm', skm('Teak', 40), 'Wood/Teak.skm')); assert.equal(b[0].group, 'Wood'); assert.equal(b[0].file, 'Teak.skm');
+  const c = await importMaterials(asFile('Loose.skm', skm('Loose', 5))); assert.equal(c[0].group, 'Imported files');
+  const p = newProject('t'); [...a, ...b].forEach((m) => addMaterial(p, m)); assert.equal(p.materials[0].group, 'Stone pack'); assert.equal(p.materials[2].file, 'Teak.skm');
+});
