@@ -58,3 +58,11 @@ Open **Review with Claude**, then **API settings**, paste your Anthropic API key
 - Studio structure and print checks are preliminary. They guide the design and do not replace an engineer's design or a slicer's own repair step.
 - Saving a file from a published preview page may be blocked by the browser sandbox. Use the installed app or open the file locally.
 - Planner roofs with a courtyard hole import into Studio as four rectangular roof wings.
+
+## New in this version
+
+- **RCC roof**: Roof tool type "RCC flat roof", or Project > Levels > "RCC roof slab on top of this level" (follows any wall outline, with parapet). Counted in quantities and column loads.
+- **3D**: Pop out into its own window; edit in 3D (Move, Wall, Door, Window, Paint modes; blue dots stretch, orange block sets height); Light menu (sunny, golden hour, overcast, night, time of day, shadows); Picture saves a PNG.
+- **Colours and materials**: Materials drawer or Project > Colours and materials. Drag swatches onto walls (face you drop on is painted; Alt = both faces). Import SketchUp `.skm` or images, or drop them on the 3D view.
+- **Plan view**: Rotate menu, Alt-drag, `[` `]` to turn, `\` to reset. Tilt shows walls as blocks.
+- **Levels**: ▲ ▼ reorder floors, Copy above/below, Add basement, Delete.

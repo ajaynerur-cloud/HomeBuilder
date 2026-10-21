@@ -16,6 +16,13 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, '..', 'www', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => {
+    // Studio opens its 3D view in a second window of its own (about:blank). Everything else goes to the browser.
+    if (!url || url === 'about:blank') {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: { width: 1180, height: 780, autoHideMenuBar: true, backgroundColor: '#EDF0EC', webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } }
+      };
+    }
     shell.openExternal(url);
     return { action: 'deny' };
   });
