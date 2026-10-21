@@ -1,0 +1,23 @@
+const {JSDOM,VirtualConsole}=require('jsdom');const fs=require('fs');
+let html=fs.readFileSync('../../dist/courtyard_house_planner.html','utf8').replace(/<script src="[^"]*three[^"]*"><\/script>/,'');
+const vc=new VirtualConsole();const errs=[];vc.on('jsdomError',e=>{if(!/navigation/.test(e.message))errs.push(e.message);});vc.on('error',e=>errs.push(String(e)));
+const dom=new JSDOM(html,{runScripts:'dangerously',pretendToBeVisual:true,url:'https://example.com/',virtualConsole:vc,beforeParse(w){w.TextEncoder=globalThis.TextEncoder;w.TextDecoder=globalThis.TextDecoder;w.THREE=require('three');w.print=()=>{};w.URL.createObjectURL=()=>'blob:x';w.URL.revokeObjectURL=()=>{};}});
+const w=dom.window,d=w.document;const tick=ms=>new Promise(r=>setTimeout(r,ms));const t=id=>d.getElementById(id).textContent;
+(async()=>{
+ await tick(400);
+ console.log('start veranda:',/Veranda \d+ sq ft/.exec(t('areaLine'))[0],'| jag box hidden',d.getElementById('jagBox').style.display==='none');
+ const c0=t('tot');
+ d.querySelector('#segJag button[data-v="1"]').click();await tick(250);
+ console.log('jag on box visible',d.getElementById('jagBox').style.display!=='none','| cost',c0,'->',t('tot'));
+ console.log('plan label:',(d.getElementById('plan').textContent.match(/Jagali, raised[^×]*/)||['none'])[0]);
+ const h=d.getElementById('jagH');h.value='3.5';h.dispatchEvent(new w.Event('change'));await tick(200);
+ const dd=d.getElementById('jagD');dd.value='9';dd.dispatchEvent(new w.Event('input'));await tick(200);
+ console.log('after 3.5 ft / 9 ft depth:',t('areaLine'));
+ const rows=[...d.querySelectorAll('#diyBody table')[0].rows].map(r=>r.textContent.replace(/\s+/g,' '));
+ console.log(rows.filter(r=>/floor|Concrete pedestal/.test(r)).join(' || '));
+ console.log('diy jagali step:',[...d.querySelectorAll('#diyBody ol li')].map(l=>l.textContent).filter(x=>/Jagali|plinth wall/.test(x)).map(x=>x.slice(0,90)).join(' | '));
+ d.getElementById('jagL').firstChild.click();await tick(150);console.log('ledges toggled',d.getElementById('jagL').firstChild.getAttribute('aria-pressed'));
+ d.getElementById('bGen').click();await tick(400);console.log('sheets',d.querySelectorAll('#sheetPrev svg').length);
+ d.querySelector('#segJag button[data-v="0"]').click();await tick(200);console.log('off again, cost',t('tot'));
+ console.log('errors',errs);process.exit(0);
+})();

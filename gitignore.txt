@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dist-app/
+www/
+android/
+tests/legacy/app.js
+*.log
+.DS_Store

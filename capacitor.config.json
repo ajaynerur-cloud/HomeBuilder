@@ -1,0 +1,7 @@
+{
+  "appId": "com.courtyard.planner",
+  "appName": "Courtyard House Planner",
+  "webDir": "www",
+  "server": { "androidScheme": "https" },
+  "plugins": { "CapacitorHttp": { "enabled": true } }
+}

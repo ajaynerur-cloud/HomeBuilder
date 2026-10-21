@@ -1,0 +1,24 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { JSDOM, VirtualConsole } from 'jsdom';
+const here = path.dirname(fileURLToPath(import.meta.url));
+const html = fs.readFileSync(path.join(here, '../dist/courtyard_house_planner.html'), 'utf8').replace(/<script src="[^"]*three[^"]*"><\/script>/, '');
+const THREE = await import('three');
+const tick = (ms) => new Promise((r) => setTimeout(r, ms));
+test('split jagali: no extra steps up to the platform wings unless asked for', async (t) => {
+  const errs = [], vc = new VirtualConsole(); vc.on('jsdomError', (e) => { if (!/navigation|Not implemented/i.test(e.message)) errs.push(e.message); });
+  const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.com/', virtualConsole: vc, beforeParse(w) { w.TextEncoder = globalThis.TextEncoder; w.TextDecoder = globalThis.TextDecoder; class Stub { constructor(o) { this.domElement = (o && o.canvas) || w.document.createElement('canvas'); } setSize() {} setPixelRatio() {} setClearColor() {} render() {} dispose() {} } w.THREE = { ...THREE, WebGLRenderer: Stub }; w.scrollTo = () => {}; w.HTMLCanvasElement.prototype.getContext = function () { return new Proxy({}, { get: (tt, k) => (k === 'canvas' ? {} : k === 'measureText' ? () => ({ width: 10 }) : () => undefined), set: () => true }); }; } });
+  const w = dom.window, d = w.document, ST = w.__ed ? w.__ed.ST : null; t.after(() => w.close()); await tick(900);
+  const S = w.__ed.ST, C = w.__core; S.jag.on = true; S.jag.sides = { n: true, s: false, e: false, w: false }; S.jag.split = Object.assign(S.jag.split || {}, { on: true });
+  d.getElementById('area').dispatchEvent(new w.Event('input', { bubbles: true })); await tick(900);
+  const wingSteps = () => { C.costFor(C.planFor(S), S, S.sys, S.finish, S.region); return C.planFor(S)._ss.steps.filter((q) => q.wing).length; }, cost = () => C.costFor(C.planFor(S), S, S.sys, S.finish, S.region).total;
+  const btn = (v) => [...d.querySelectorAll('#splitWing button')].find((b) => b.getAttribute('data-v') === v);
+  assert.ok(btn('0') && btn('1'), 'control present'); assert.equal(btn('0').getAttribute('aria-pressed'), 'true', 'off by default');
+  const c0 = cost(), p0 = d.getElementById('plan').innerHTML; assert.equal(wingSteps(), 0, 'no wing steps by default');
+  btn('1').click(); await tick(300); assert.ok(wingSteps() >= 2, 'steps added when asked'); assert.ok(cost() > c0, 'and costed'); assert.notEqual(d.getElementById('plan').innerHTML, p0, 'plan redrawn');
+  btn('0').click(); await tick(300); assert.equal(wingSteps(), 0); assert.equal(Math.round(cost()), Math.round(c0)); assert.equal(d.getElementById('plan').innerHTML, p0, 'back to the plan without them');
+  assert.deepEqual(errs, []);
+});
